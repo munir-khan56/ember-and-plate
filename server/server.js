@@ -12,6 +12,9 @@ import orderRoutes from "./routes/orderRoutes.js"
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js"
 
 dotenv.config()
+if (!process.env.MONGO_URI) {
+  dotenv.config({ path: "./server/.env" })
+}
 
 const app = express()
 
@@ -29,6 +32,16 @@ app.use(express.json())
 app.use(cookieParser())
 
 connectDB()
+
+// Ensure database connection is ready for serverless requests
+app.use(async (req, res, next) => {
+  try {
+    await connectDB()
+    next()
+  } catch (error) {
+    next(error)
+  }
+})
 
 // Root route
 app.get("/", (req, res) => {
@@ -50,6 +63,10 @@ app.use(errorHandler)
 
 const PORT = process.env.PORT || 5000
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-})
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`)
+  })
+}
+
+export default app

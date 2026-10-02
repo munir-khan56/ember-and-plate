@@ -24,16 +24,41 @@ const allowedOrigins = process.env.CLIENT_URL
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, or same-origin)
+      if (!origin) return callback(null, true)
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith(".vercel.app") ||
+        process.env.VERCEL
+      ) {
+        return callback(null, true)
+      }
+      return callback(null, true)
+    },
     credentials: true,
   })
 )
 app.use(express.json())
 app.use(cookieParser())
 
-connectDB()
+// Root & Health routes - do NOT block or depend on database connection
+app.get("/", (req, res) => {
+  res.json({
+    message: "Ember & Plate API is running",
+  })
+})
 
-// Ensure database connection is ready for serverless requests
+app.get("/api", (req, res) => {
+  res.json({
+    message: "Ember & Plate API is running",
+  })
+})
+
+app.use("/api/health", healthRoutes)
+app.use("/health", healthRoutes)
+
+// Ensure database connection is ready for data routes
 app.use(async (req, res, next) => {
   try {
     await connectDB()
@@ -43,15 +68,7 @@ app.use(async (req, res, next) => {
   }
 })
 
-// Root route
-app.get("/", (req, res) => {
-  res.json({
-    message: "Ember & Plate API is running",
-  })
-})
-
-// API Routes
-app.use("/api/health", healthRoutes)
+// API Data Routes (require MongoDB)
 app.use("/api/auth", authRoutes)
 app.use("/api/menu", menuRoutes)
 app.use("/api/reservations", reservationRoutes)
@@ -64,6 +81,10 @@ app.use(errorHandler)
 const PORT = process.env.PORT || 5000
 
 if (!process.env.VERCEL) {
+  connectDB().catch((err) => {
+    console.error("Initial MongoDB connection error:", err.message)
+  })
+
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
   })

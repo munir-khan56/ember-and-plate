@@ -11,9 +11,11 @@ import reservationRoutes from "./routes/reservationRoutes.js"
 import orderRoutes from "./routes/orderRoutes.js"
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js"
 
-dotenv.config()
-if (!process.env.MONGO_URI) {
-  dotenv.config({ path: "./server/.env" })
+if (!process.env.VERCEL) {
+  dotenv.config()
+  if (!process.env.MONGO_URI) {
+    dotenv.config({ path: "./server/.env" })
+  }
 }
 
 const app = express()

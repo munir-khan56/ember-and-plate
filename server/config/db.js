@@ -3,17 +3,35 @@ import mongoose from "mongoose"
 // Cache connection promise across serverless function invocations
 let cachedPromise = null
 
-const sanitizeMongoUri = (uri) => {
+export const sanitizeMongoUri = (uri) => {
   if (!uri || typeof uri !== "string") return ""
-  let cleaned = uri.trim()
 
-  const srvIdx = cleaned.indexOf("mongodb+srv://")
-  const standardIdx = cleaned.indexOf("mongodb://")
+  // Strip BOM, zero-width characters, and non-breaking spaces
+  let cleaned = uri
+    .replace(/[\uFEFF\u00A0\u2060]/g, "")
+    .replace(/[\u200B\u200C\u200D]/g, "")
+    .trim()
 
-  if (srvIdx !== -1) {
-    cleaned = cleaned.slice(srvIdx)
-  } else if (standardIdx !== -1) {
-    cleaned = cleaned.slice(standardIdx)
+  // Handle URL-encoded scheme if present (e.g. mongodb%2Bsrv%3A%2F%2F or mongodb%3A%2F%2F)
+  if (/^mongodb(%2Bsrv)?%3A%2F%2F/i.test(cleaned)) {
+    try {
+      cleaned = decodeURIComponent(cleaned)
+    } catch {
+      // ignore
+    }
+  }
+
+  // Normalize escaped slashes (e.g. mongodb+srv:\/\/ or mongodb+srv:\\/)
+  cleaned = cleaned.replace(/\\+\//g, "/").replace(/\\\\+/g, "/")
+
+  // Normalize single slash after scheme colon if only one was provided (e.g. mongodb+srv:/host)
+  cleaned = cleaned.replace(/^(?:["'\s]*)(mongodb(?:\+srv)?):(?!\/\/)\/*(?=[^/])/i, "$1://")
+
+  // Find mongodb:// or mongodb+srv:// case-insensitively
+  const match = cleaned.match(/mongodb(\+srv)?:\/\//i)
+  if (match && match.index !== undefined) {
+    const scheme = match[0].toLowerCase()
+    cleaned = scheme + cleaned.slice(match.index + match[0].length)
   }
 
   // Remove any trailing quotes, semicolons, whitespace, or newlines
@@ -33,7 +51,12 @@ const connectDB = async () => {
     return cachedPromise
   }
 
-  const mongoUri = sanitizeMongoUri(process.env.MONGO_URI)
+  const rawUri =
+    process.env.MONGO_URI ||
+    process.env.MONGODB_URI ||
+    process.env.MONGO_URL ||
+    process.env.DATABASE_URL
+  const mongoUri = sanitizeMongoUri(rawUri)
 
   if (!mongoUri) {
     const error = new Error("MONGO_URI environment variable is not defined")
